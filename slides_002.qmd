@@ -1,0 +1,340 @@
+---
+title: "Hands-on R training: REGACC Workflows II"
+format: 
+  revealjs:
+    theme: ["custom.css"]
+    footer: "Luis Biedma | Internal training"
+    embed-resources: true
+    slide-number: c/t
+    incremental: true
+    highlight-style: github
+execute:
+  cache: false
+  message: false
+  warning: false
+  echo: true
+---
+
+## Overview
+
+The usual workflow consists, with some variations:
+
+- ~~Find the files with the data~~
+
+- [Load the data into R and tidy it]{style="color: red"}
+
+- Do some calculations / charts
+
+- Produce an output (normally a file)
+
+
+## Usual files
+
+- xml
+
+- matis extractions
+
+- csv
+
+- excel
+
+- eurobase
+
+## Brief recap of main functions {.smaller}
+
+-   `filter()`: subsetting rows based on one or more conditions
+
+-   `select()`: subsetting columns
+
+-   `mutate()`: create new columns, usually the result of an operation in other columns
+
+-   `arrange()` : to sort the rows
+
+-   `pivot_longer()`: convert a data frame from wide to long
+
+-   `head()`: returns the first parts of an object
+
+-   `pull()`: extract a column of a dataframe as a vector
+
+-   `separate()`: separate a character column into multiple columns
+
+-   `map()`: apply a function to each element of a vector
+
+-   `janitor::clean_names()`: convert to lowercase, snakecase, etc columns names 
+
+
+## xml files{.smaller}
+
+
+::: {.fragment .fade-in}
+
+They can be easily read with `readsdmx::read_sdmx()`
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| echo: false
+library(tidyverse)
+list_xml <- function(folder_sel,
+                     table_sel = c("T1001", "T1002", "T1200", "T1300"),
+                     time_min = "2022-01-01",
+                     time_max = "2024-12-01") {
+  tmp <- list.files(
+    path = folder_sel,
+    recursive = TRUE,
+    pattern = "\\.xml$",
+    full.names = TRUE
+  ) %>%
+    as_tibble() %>%
+    mutate(name = str_sub(value, start = -36)) %>%
+  mutate(table = str_sub(name,7,11),
+         country = str_sub(name,15,16),
+         ref_year = str_sub(name,18,21),
+         version= str_sub(name,29,32)) %>% 
+    filter(table %in% table_sel) %>%
+    mutate(version = parse_number(version)) %>%
+    mutate(time = file.mtime(value)) %>%
+    filter(time >= time_min & time <= time_max)
+
+  return(tmp)
+}
+```
+
+```{r}
+#| code-line-numbers: false
+tmp<- list_xml(folder_sel = "ARCHIVE/DE",
+               table_sel = "T1300") %>% 
+  arrange(desc(time)) %>% 
+  head(1) %>% 
+  pull(value)
+
+tmp<- readsdmx::read_sdmx(tmp)
+```
+:::
+
+## xml files{.smaller}
+
+::: {.fragment .fade-in}
+
+All columns are read as character. Normally we will select only some columns and convert  the type of particular ones
+
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<- tmp %>% 
+  janitor::clean_names() %>%
+  select(ref_area,sto,accounting_entry,activity,prices,unit_measure,time_period,obs_value,obs_status) %>% 
+  mutate(time_period=as.integer(time_period,
+         obs_value=as.numeric(obs_value)))
+```
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+head(tmp)
+```
+:::
+
+## matis extractions (with the new EXTRACT){.smaller}
+
+::: {.fragment .fade-in}
+They can be read with many functions. A standard one (not the fastest!) is `readr::read_delim()`
+:::
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<-readr::read_delim("data/matis/extract_data_manager_PL_230208_141652.txt", delim = ";")
+```
+:::
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+head(tmp)
+```
+:::
+
+
+## matis extractions{.smaller}
+
+::: {.fragment .fade-in}
+Contrary to xml files they need more tidying.
+:::
+
+::: {.fragment .fade-in}
+Moving years to a single column
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<-tmp %>% 
+  pivot_longer(cols= !contains("series"),
+               names_to = "time_period",
+               values_to = "obs_value")
+head(tmp)
+```
+:::
+## matis extractions{.smaller}
+
+::: {.fragment .fade-in}
+Extracting the dimensions from the column *series* 
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<-tmp %>% 
+ separate(series, 
+          into = c("val","type","table_identifier","freq","ref_area","counterpart_area",
+                   "counterpart_sector","accounting_entry","sto","activity", "valuation",
+                    "prices","transformation","unit_measure"), 
+          sep ="\\.")
+
+head(tmp)
+```
+:::
+
+::: {.fragment .fade-in}
+
+[Comment on sep = "\\.")]{style="color: red"}
+
+:::
+## matis extractions{.smaller}
+
+::: {.fragment .fade-in}
+Getting the flags an converting obs_value to numeric. In many cases we will keep just some columns.
+:::
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<-tmp %>% 
+ separate(obs_value, 
+          into = c("obs_value", "flags"), 
+          sep ="#") %>% 
+  mutate(obs_status = str_sub(flags,1,1),
+         conf_status = str_sub(flags,2,2)) %>% 
+  select(-flags)
+
+head(tmp)
+```
+:::
+
+## naming
+
+::: {.fragment .fade-in}
+Note that we end up with similar data in xml or matis. This allows a lot of flexibility in the workflow, as we can run the same procedures using both extractions.
+:::
+
+## csv files
+
+::: {.fragment .fade-in}
+csv files are our preferred way of storing intermediate files of reasonable size. They are easy to read and we still have the option to open them with a external reader (Notepad, Excel) if we want to check the content. By default we use `data.table::fread()`.
+:::
+
+## csv files{.smaller}
+
+::: {.fragment .fade-in}
+
+For example to read the files with the data used for the NQR revision indicator
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+list.files(path= "data/NQR",
+           pattern= "\\.csv$",
+           full.names = TRUE) %>% 
+  set_names() %>% 
+  map(data.table::fread) %>% 
+  list_rbind() %>% 
+  glimpse()
+```
+:::
+
+::: {.fragment .fade-in}
+
+[Comment on set_names()]{style="color: red"}
+
+:::
+## Excel{.smaller}
+
+::: {.fragment .fade-in}
+We do not make a very intensive use of reading Excel files but they can be easily read with `readxl::read_xlsx()`. For example, to read the file with the GDP vintages that is shown in our dedicated section
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<- readxl::read_xlsx(path = "data/df_publication_2023.xlsx",
+                        sheet = "data") %>% 
+  pivot_longer(cols= where (is.numeric),
+               names_to = "time_period",
+               values_to = "obs_value")
+
+glimpse(tmp)
+```
+:::
+
+## eurobase (internal){.smaller}
+
+::: {.fragment .fade-in}
+From time to time we may need to look at the files we sent to Eurobase. They are zipped files of txt files. Reading them needs some tweaking as they do not have a strange design. We can do it with `readr::read_delim()` or a bit faster, if we want lo load a lot of them, with `vroom::vroom()`. We will need to adapt somethings depending of the table as the number of columns and dimensions change.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<- readr::read_delim("data/eurobase/nama_10r_2gdp_220330_195302_29280.eurobase.zip",
+                        skip = 4,
+                        col_types = "cccc",
+                        col_names = c("time_period", "ref_area", "unit_measure", "obs_value")
+                        )
+
+```
+:::
+## eurobase (internal){.smaller}
+
+::: {.fragment .fade-in}
+We tidy the data by converting the period to numeric, extracting the flags and converting the values to numeric.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<- tmp %>% 
+  separate(obs_value, into = c("obs_value", "flag"), sep = "~") %>% 
+  mutate(time_period = as.integer(str_sub(time_period, 1, 4 )),
+          obs_value = as.numeric (obs_value))
+
+glimpse(tmp)
+
+```
+:::
+
+## eurobase (external){.smaller}
+
+::: {.fragment .fade-in}
+We obtain some data from Eurobase (population and LFS) downloading it with `eurostat::get_eurostat()`. The data is already tidy and we can save it in any format (currently rds). For population, we do some calculations before.
+:::
+
+
+::: {.fragment .fade-in}
+```{r}
+#| eval: false
+#| code-line-numbers: false
+pop_dem<- eurostat::get_eurostat("demo_r_pjangroup", 
+                             time_format="num") %>% 
+  filter ( sex =="T" & age =="TOTAL") %>% 
+  select(-sex,  -age, -unit) %>% 
+  group_by(geo) %>% 
+  arrange(time,.by_group=TRUE) %>% 
+  mutate(dem= round((values+lead(values))/2000,1)) %>% 
+  select(-values) %>% 
+  ungroup()
+
+```
+:::

@@ -1,0 +1,425 @@
+---
+title: "Hands-on R training: REGACC Workflows IV"
+format: 
+  revealjs:
+    theme: ["custom.css"]
+    footer: "Luis Biedma | Internal training"
+    embed-resources: true
+    slide-number: c/t
+    incremental: true
+    highlight-style: github
+execute:
+  cache: false
+  message: false
+  warning: false
+  echo: true
+---
+
+## Overview
+
+The usual workflow consists, with some variations:
+
+-   ~~Find the files with the data~~
+
+-   ~~Load the data into R and tidy it~~
+
+-   ~~Do some calculations~~ / [charts]{style="color: red"}
+
+-   Produce an output (normally a file)
+
+## ggplot2
+
+There are three basic components of a ggplot chart
+
+- A **data frame** containing the data
+
+- **aes**thetics or roles assigned to particular variables in the data frame.
+
+- A **geom**etric object which is what you are plotting.
+
+## data{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+library(tidyverse)
+tmp<- readxl::read_xlsx(path = "data/df_publication_2023.xlsx",
+                        sheet = "data") %>% 
+  pivot_longer(cols= where (is.numeric),
+               names_to = "time_period",
+               values_to = "obs_value") %>% 
+  mutate(time_period = as.integer(time_period),
+         NUTS = as.factor(NUTS),
+         obs_value = as.numeric(obs_value))
+
+tmp1<- tmp %>% 
+  filter(Country=="EL" & vintage=="V2023" & unit == "PPS_HAB_EU27")
+  
+```
+:::
+
+## data{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1)
+  
+```
+:::
+## aesthetics{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value))
+  
+```
+:::
+
+## geom{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value))+
+  geom_point()
+  
+```
+:::
+
+## geom{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value))+
+  geom_line()
+  
+```
+:::
+
+## geom + aes{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value, group = geo))+
+  geom_line()
+  
+```
+:::
+
+## geom + aes{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = geo, fill = obs_value, label = obs_value))+
+  geom_tile()+
+  geom_text()
+  
+```
+:::
+
+## geom + aes{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value, colour = geo, linetype=NUTS ))+
+  geom_line()
+  
+```
+:::
+
+## geom + aes{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1 %>% filter (time_period==2021), aes(x=geo, y = obs_value))+
+  geom_col(aes(fill=NUTS))
+  
+```
+:::
+
+## geom + aes{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1 %>% filter (time_period==2021), aes(x=reorder(geo,obs_value), y = obs_value))+
+  geom_col(aes(fill=NUTS),width = 0.5, alpha=0.5)
+  
+```
+:::
+## geom + aes{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1 %>% filter (time_period==2021), aes(y=reorder(geo,obs_value), x = obs_value))+
+  geom_col(aes(fill=NUTS),width = 0.5, alpha=0.5)
+  
+```
+:::
+
+## geom_* {.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+lsf.str("package:ggplot2") %>% grep("^geom_", ., value = TRUE)
+```
+:::
+
+## Default themes{.smaller}
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value, colour = geo, linetype=NUTS ))+
+  geom_line()+
+  theme_minimal()
+  
+```
+:::
+
+## Facets and scales{.smaller}
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value ))+
+  geom_line(colour="darkblue")+
+  geom_hline(yintercept = 100, colour="darkred")+
+  facet_wrap(~geo)+
+  theme_light()
+  
+```
+:::
+
+## Facets and scales{.smaller}
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value ))+
+  geom_line(colour="darkblue")+
+  geom_hline(yintercept = 100, colour="darkred")+
+  facet_wrap(~geo, scales="free_y")+
+  theme_classic()
+  
+```
+:::
+
+## Facets and scales{.smaller}
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+ggplot(tmp1, aes(x=time_period, y = obs_value ))+
+  geom_line(colour="darkblue")+
+  geom_hline(yintercept = 100, colour="darkred")+
+  facet_wrap(~geo)+
+  scale_x_continuous(breaks=c(2005,2015), expand=c(0,0))+
+  theme_classic()
+  
+```
+:::
+
+## Colour palettes (also scales){.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+p<-ggplot(tmp1, aes(x=time_period, y = fct_rev(geo) , fill = obs_value))+
+  geom_tile()+
+  theme_light()+
+  scale_fill_viridis_c()+
+  scale_x_continuous(expand=c(0,0))+
+  scale_y_discrete(expand=c(0,0))
+p
+  
+```
+:::
+
+## Theme elements{.smaller}
+
+We can control almost every possible element of the chart (colours, grid lines, ticks, axis) with theme. To suppress something we use `element_blank()`.
+
+## Theme elements{.smaller}
+
+:::: {.columns}
+
+::: {.column width="40%"}
+```{r}
+#| eval: false
+p<- p+ theme(axis.ticks = element_blank(),
+         axis.title = element_blank(),
+         legend.title = element_blank())
+
+p
+  
+```
+:::
+::: {.column width="60%"}
+```{r}
+#| echo: false
+p<- p+ theme(axis.ticks = element_blank(),
+         axis.title = element_blank(),
+         legend.title = element_blank())
+
+p
+  
+```
+:::
+:::
+
+## Text elements{.smaller}
+
+We can control text elements with `element_text()`. Titles, subtitles, caption, tags are controlled with `labs()`, lines (axis lines, gridlines...) with `element_line()` and others (plot area, legend box...) with `element_rect()`. 
+
+## element_* {.smaller}
+
+:::: {.columns}
+
+::: {.column width="40%"}
+
+```{r}
+#| eval: false
+p <- p + theme(
+  axis.text.y = ggplot2::element_text(size = 11, colour = "grey20"),
+  legend.position = "top",
+  plot.title = element_text(
+    size = rel(1.6),
+    face = "bold",
+    color = "grey10",
+    margin = margin(12, 0, 8, 0))) +
+  labs(title = "Greece NUTS 2 regions GDP per capita",
+       subtitle = " In PPS as % of the EU27 average",
+       caption = "Source: Eurostat",
+       tag = "Figure 1")
+
+p
+  
+```
+:::
+
+::: {.column width="60%"}
+
+```{r}
+#| echo: false
+p <- p + theme(
+  axis.text.y = ggplot2::element_text(size = 11, colour = "grey20"),
+  legend.position = "top",
+  plot.title = element_text(
+    size = rel(1.6),
+    face = "bold",
+    color = "grey10",
+    margin = margin(12, 0, 8, 0))) +
+  labs(title = "Greece NUTS 2 regions GDP per capita",
+       subtitle = " In PPS as % of the EU27 average",
+       caption = "Source: Eurostat",
+       tag = "Figure 1")
+
+p
+  
+```
+:::
+:::
+
+## Custom themes{.smaller}
+
+```{r}
+#| code-line-numbers: false
+tmp1$geo2<- tmp1$geo
+ggplot(tmp1, aes(x=time_period, y = obs_value ))+
+  geom_line(data=tmp1 %>% select(-geo),aes(x=time_period, y = obs_value, group = geo2),colour="grey80")+
+    geom_line(colour="darkblue", linewidth = 1)+
+  facet_wrap(~geo)+
+    scale_x_continuous(breaks=c(2005,2015), expand=c(0,0))+
+  scale_y_continuous(breaks = c(40,80,120))+
+  regacc::theme_ra()+
+    theme(panel.grid.major = element_blank())
+``` 
+::: {.fragment .fade-in}
+
+[Comment order]{style="color: red"}
+
+:::
+## Adding interactivity{.smaller}
+
+We can add some basic (and more advanced) reactivity with `plotly::ggplotly()`, although we will see later that we will use `shiny()`.
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+library(plotly)
+ggplotly(p)
+```
+:::
+
+## Adding interactivity{.smaller}
+
+```{r}
+#| eval: false
+#| code-line-numbers: false
+tx <- highlight_key(tmp1, ~geo)
+base <- plot_ly(tx, color = I("black")) %>% 
+  group_by(geo)
+base<- base %>%
+  group_by(geo) %>%
+  add_lines(x = ~time_period, y = ~obs_value)
+
+highlight(
+  base, 
+  on = "plotly_click", 
+  selectize = TRUE, 
+  dynamic = TRUE, 
+  persistent = TRUE
+)
+```
+
+## Adding interactivity{.smaller}
+
+```{r}
+#| echo: false
+tx <- highlight_key(tmp1, ~geo)
+base <- plot_ly(tx, color = I("black")) %>% 
+  group_by(geo)
+base<- base %>%
+  group_by(geo) %>%
+  add_lines(x = ~time_period, y = ~obs_value)
+
+highlight(
+  base, 
+  on = "plotly_click", 
+  selectize = TRUE, 
+  dynamic = TRUE, 
+  persistent = TRUE
+)
+```
+
+## Shiny
+
+- `{shiny}` is a package that makes it easy to build interactive web apps with R. It consists of a user interface where the user can interact and a server module that executes the options chosen by the user and updates the output.
+
+- We will see a small example in the script `shiny.R`
+
+
+

@@ -1,0 +1,45 @@
+---
+title: "example"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    theme: readable
+    code_download: yes
+params:
+  country: ES
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = FALSE,
+    message = FALSE,
+    warning = FALSE)
+```
+
+```{r country, include=FALSE}
+country_sel <- params$country
+```
+
+```{r}
+library(tidyverse)
+tmp<- data.table::fread("data/tmp.csv") %>% 
+  mutate(NUTS=as.factor(NUTS))
+tmp1<-tmp %>% 
+  filter(vintage %in% c("V2023") & time_period >=2019 & Country == country_sel & unit %in% c("PPS_HAB_EU27")) %>% 
+  pivot_wider(names_from = time_period,
+              values_from =obs_value) %>% 
+  select(geo,NUTS,`2019`, `2020`, `2021`)
+
+knitr::kable(tmp1)
+
+tmp1 %>% 
+  select(geo,NUTS,`2021`) %>% 
+  ggplot(aes(x= `2021`, y=reorder(geo,`2021`), fill = NUTS))+
+  geom_col()+
+  theme_minimal()+
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "none")+
+  scale_fill_manual(values = c("#0E47CB","#FFCC00"))+
+  xlab("")+ ylab("")+
+  ggtitle("GDP per capita as % of EU in PPS")
+```

@@ -1,0 +1,488 @@
+---
+title: "Hands-on R training: REGACC Workflows III"
+format: 
+  revealjs:
+    theme: ["custom.css"]
+    footer: "Luis Biedma | Internal training"
+    embed-resources: true
+    slide-number: c/t
+    incremental: true
+    highlight-style: github
+execute:
+  cache: false
+  message: false
+  warning: false
+  echo: true
+---
+
+## Overview
+
+The usual workflow consists, with some variations:
+
+-   ~~Find the files with the data~~
+
+-   ~~Load the data into R and tidy it~~
+
+-   Do some [calculations]{style="color: red"} / charts
+
+-   Produce an output (normally a file)
+
+## Calculations
+
+-   Produce summarised information
+
+-   Comparing datasets
+
+-   Check internal consistency
+
+-   Compute derived indicators for analysis
+
+## Brief recap of main functions {.smaller}
+
+-   `filter()`: subsetting rows based on one or more conditions
+
+-   `select()`: subsetting columns
+
+-   `mutate()`: create new columns, usually the result of an operation in other columns
+
+-   `left_join()`, `full_join()`: to join two or more data frames
+
+-   `arrange()` : to sort the rows
+
+-   `pivot_longer()`: convert a data frame from wide to long
+
+-   `pivot_wider()`: convert a data frame from long to wide
+
+## Brief recap of main functions {.smaller}
+
+-   `group_by()`: define the stratum in which operations are performed
+
+-   `summarise()`: do calculations on the groups defined by `group_by()`
+
+-   `across()`, `if_any()`: apply the function in multiple columns
+
+-   `coalesce()` : fill empty cells with the values in another column
+
+-   `pull()`: extract as a vector the values in a column
+
+-   `tally()`: count observations by group
+
+-   `expand_grid()`: Create a tibble from all combinations of different vectors
+
+## Understanding group_by() {.smaller}
+
+::: {.fragment .fade-in}
+
+We will use the file with the GDP vintages to illustrate.
+:::
+
+```{r}
+#| echo: false
+#| code-line-numbers: false
+library(tidyverse)
+tmp<- readxl::read_xlsx(path = "data/df_publication_2023.xlsx",
+                        sheet = "data") %>% 
+  pivot_longer(cols= where (is.numeric),
+               names_to = "time_period",
+               values_to = "obs_value") %>% 
+  na.omit()
+```
+
+::: {.fragment .fade-in}
+```{r}
+#| echo: false
+tmp
+```
+:::
+
+## Understanding group_by() {.smaller}
+
+::: {.fragment .fade-in}
+We want to calculate the average by **region**, **unit** and **time** of the values. We leave vintage outside of our grouping variables
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp %>%  
+  group_by(Country,geo,unit,time_period) %>% 
+  summarise(mean=mean(obs_value)) %>% 
+  head()
+```
+:::
+
+## Understanding group_by(){.smaller}
+
+::: {.fragment .fade-in}
+We want to calculate the average for all years by **region**, **sto** and **vintage**. We leave time_period outside of our grouping variables.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp %>%  
+  group_by(Country,geo,unit,vintage) %>% 
+  summarise(mean=mean(obs_value)) %>% 
+  head()
+```
+
+:::
+
+
+## Understanding group_by() {.smaller}
+
+::: {.fragment .fade-in}
+
+How would you calculate the difference between two consecutive vintages?. Here we need also to make sure the order of the rows in the group is the one we want
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp %>% 
+  group_by(Country,geo,unit,time_period) %>% 
+  arrange(vintage,.by_group = TRUE) %>% 
+  mutate(rev = obs_value-lag(obs_value)) %>% 
+  head()
+```
+
+:::
+
+## Summarised information
+
+We prefer in REGACC to use our tools given the particularities of our data for completeness, revisions, flags and other topics even if corporate tools are available. We will show here some examples.
+
+## Flags {.smaller}
+
+Let's see how to visualize the flags reported by Germany in table 13.
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+library(tidyverse)
+tmp<- readsdmx::read_sdmx("ARCHIVE/DE/221221_LOADING_A_T1300/1316_39_A_T1300/NAREG_T1300_A_DE_2017_0000_V0002.xml") %>% 
+    janitor::clean_names() %>%
+  select(ref_area,sto,accounting_entry,time_period,obs_status) %>% 
+  mutate(time_period=as.integer(time_period),
+         sto=paste0(accounting_entry,"_",sto)) %>% 
+  select(-accounting_entry) %>% 
+  filter(obs_status!="A") %>% 
+  group_by(ref_area,sto,obs_status) %>% 
+  tally() %>% 
+  pivot_wider(names_from=sto,
+              values_from=n)
+```
+:::
+
+## Flags {.smaller}
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+regacc::show_DT(tmp)
+```
+:::
+
+## Completeness {.smaller}
+
+::: {.fragment .fade-in}
+For the NQR we check the completeness of the data reported but for users what is more relevant is the completeness of the data published. We can check the completeness of a eurobase table comparing it with a theoretical matrix of the possible combinations including voluntary data and see which combinations are empty.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+geo<- data.table::fread("data/NUTS_2021.csv") %>% 
+  filter(label!="Extra-regio" & country!="UK") %>% 
+  pull(ref_area)
+nace_r2<- c("TOTAL", "A", "B-E", "C", "F", "G-I", "G-J", "J", "K-N", "K", "L", "M_N", "O-U", "O-Q", "R-U")
+time<- seq(2000L,2021L,by=1L)
+tmp <- expand_grid(geo,nace_r2,time)
+glimpse(tmp)
+```
+:::
+
+## Completeness {.smaller}
+
+::: {.fragment .fade-in}
+And read the eurobase file
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+eurobase<- arrow::read_parquet("data/gva.parquet") %>% 
+  filter(currency=="MIO_NAC") %>% 
+  select(geo,nace_r2,time, values) %>% 
+  na.omit()
+
+```
+:::
+
+::: {.fragment .fade-in}
+We do a `left_join()` and see the empty rows.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp <- left_join(tmp,eurobase) %>% 
+  filter(is.na(values)) %>% 
+  mutate(country=as.factor(str_sub(geo,1,2))) %>% 
+  group_by(country,nace_r2,time) %>% 
+  tally() %>% 
+  pivot_wider(names_from=nace_r2,
+              values_from=n)
+
+```
+:::
+
+## Completeness {.smaller}
+::: {.fragment .fade-in}
+```{r}
+#| echo: false
+regacc::show_DT(tmp)
+
+```
+:::
+
+## Merging datasets {.smaller}
+
+::: {.fragment .fade-in}
+We need two (or more) data.frames  and some joining keys (columns with the same name). Some times we will check if they are exactly the same, others how far they are, or to calculate something. We will merge LU  tables T1002 and T1200.
+:::
+
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+T1002<- readsdmx::read_sdmx("ARCHIVE/LU/221108_LOADING_A_T1002/1132_55_A_T1002/NAREG_T1002_A_LU_2021_0000_V0001.xml") %>% 
+  janitor::clean_names() %>% 
+  select(ref_area,sto,activity,time_period,obs_value) %>% 
+  filter(sto =="EMP") %>% 
+  rename(EMP_HW=obs_value) %>% 
+  select(ref_area,activity,time_period,EMP_HW) %>% 
+  mutate(EMP_HW=as.numeric(EMP_HW))
+```
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+T1200<- readsdmx::read_sdmx("ARCHIVE/LU/221109_LOADING_A_T1200/1449_42_A_T1200/NAREG_T1200_A_LU_2021_0000_V0002.xml") %>% 
+  janitor::clean_names() %>% 
+  select(ref_area,sto,activity,time_period,obs_value) %>% 
+  filter(sto =="EMP") %>% 
+  rename(EMP_PS=obs_value) %>% 
+  select(ref_area,activity,time_period,EMP_PS) %>% 
+  mutate(EMP_PS=as.numeric(EMP_PS))
+```
+:::
+
+## Merging datasets {.smaller}
+::: columns
+::: {.column width="45%"}
+
+```{r}
+#| code-line-numbers: false
+T1002
+```
+
+:::
+::: {.column width="10%"}
+
+:::
+
+::: {.column width="45%"}
+
+```{r}
+#| code-line-numbers: false
+T1200
+```
+
+:::
+:::
+
+## Merging datasets {.smaller}
+::: columns
+::: {.column width="45%"}
+
+Full join
+```{r}
+#| code-line-numbers: false
+full_join(T1200,T1002)
+```
+
+:::
+::: {.column width="10%"}
+
+:::
+
+::: {.column width="45%"}
+
+Left Join
+```{r}
+#| code-line-numbers: false
+left_join(T1002,T1200)
+```
+
+:::
+:::
+
+## Merging datasets 
+
+::: {.fragment .fade-in}
+The last step is usually compute the difference between the two columns with `mutate()`and apply a `filter()`. In other cases it would be more appropriate a chart. 
+:::
+
+## Check internal consistency
+
+::: {.fragment .fade-in}
+In our case this is restricted to NACE, NUTS and transactions.
+:::
+
+::: {.fragment .fade-in}
+For NACE we would pivot the NACE to columns, calculate aggregates and see if they are different
+:::
+
+## Check internal consistency{.smaller}
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+readsdmx::read_sdmx("ARCHIVE/LU/221108_LOADING_A_T1002/1132_55_A_T1002/NAREG_T1002_A_LU_2021_0000_V0001.xml") %>% 
+  janitor::clean_names() %>% 
+  select(ref_area,sto,activity,time_period,obs_value) %>% 
+  mutate(obs_value = as.numeric(obs_value)) %>% 
+  filter(sto == "D1") %>% 
+  pivot_wider(names_from =  activity,
+               values_from = obs_value) %>% 
+  mutate(TOTAL_c= A + BTE + F + GTJ + KTN + OTU,
+         TOTAL_d = round(`_T` - TOTAL_c)) %>% 
+  select (ref_area,time_period,`_T`, TOTAL_c, TOTAL_d)
+```
+:::
+
+## Check internal consistency{.smaller}
+
+::: {.fragment .fade-in}
+For checking the NUTS we profit from the fact that NUTS is a smart classification (except for the UK). NUTS 2 codes are a subset of NUTS3 codes. We aggregate the NUTS3 regions that share the same NUTS2 code and compared them with the original. We would do this for Germany. 
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp<-readsdmx::read_sdmx("ARCHIVE/DE/221221_LOADING_A_T1200/1616_40_A_T1200/NAREG_T1200_A_DE_2018_0000_V0002.xml") %>% 
+  janitor::clean_names() %>% 
+  select(ref_area,time_period, sto, accounting_entry, activity, unit_measure,obs_value) %>% 
+  mutate(NUTS=str_length(ref_area)-2,
+         obs_value=as.numeric(obs_value))
+  
+```
+:::
+
+## Check internal consistency{.smaller}
+::: {.fragment .fade-in}
+
+We aggregate the NUTS 3 regions into NUTS2 using their first 4 codes.
+:::
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp2<-tmp %>%
+    filter(NUTS=="3") %>%
+    mutate(geo3 = substr(ref_area, start = 1, stop = 4)) %>%
+    group_by(time_period, sto, accounting_entry, activity, unit_measure, geo3) %>%
+    mutate(sum = sum(obs_value)) %>%
+    select(time_period, sto, accounting_entry, activity, unit_measure, geo3, sum) %>%
+    distinct() %>%
+    rename(ref_area ="geo3") %>%
+    ungroup()
+```
+:::
+
+## Check internal consistency{.smaller}
+::: {.fragment .fade-in}
+
+And compare
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+NUTS3 <- left_join(tmp2, tmp) %>%
+    select(NUTS,time_period, sto, accounting_entry, activity, unit_measure, ref_area, sum, obs_value) %>%
+    mutate(diff = round(sum - obs_value, digits = 0),
+           diffp = round (diff * 100/ obs_value, digits = 1))
+head(NUTS3)
+```
+:::
+
+## Compute derived indicators{.smaller}
+
+::: {.fragment .fade-in}
+
+Calculate growth rates: We need to group by all variables except **time** and make sure that the years are arranged in ascending order and use the `lag()`operator.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp %>% 
+  group_by(ref_area,sto,accounting_entry,activity,unit_measure) %>% 
+  arrange(time_period, .by_group = TRUE) %>% 
+  mutate(t1 = round(obs_value/lag(obs_value)*100-100,1)) %>% 
+  head()
+```
+
+:::
+
+## Compute derived indicators{.smaller}
+
+::: {.fragment .fade-in}
+
+Calculate shares: We need to group by all variables except **ref_area** (shares in country) or **activity** (shares in NACE) and divide by a fixed row by group using `[==]`.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp %>% 
+group_by(sto,accounting_entry,activity,unit_measure) %>%
+      mutate(share = round(obs_value*100 / obs_value[NUTS =="0"],1)) %>% 
+      head()
+```
+:::
+
+## Compute derived indicators{.smaller}
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp %>% 
+group_by(ref_area,sto,accounting_entry,unit_measure) %>%
+      mutate(share = round(obs_value*100 / obs_value[activity =="_T"],1)) %>% 
+      head()
+```
+:::
+
+## Compute derived indicators{.smaller}
+
+::: {.fragment .fade-in}
+
+In a few cases we use `data.table()`for the calculations
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+library(data.table)
+as.data.table(tmp)[# here we would filter
+                   ,share:= round(obs_value*100 / obs_value[activity =="_T"],1)
+                    # here we do mutate (:=) and select .()
+                   ,.(ref_area,sto,accounting_entry,unit_measure)] %>% # here is the group_by
+head()
+
+```
+:::

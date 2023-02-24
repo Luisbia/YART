@@ -1,0 +1,414 @@
+---
+title: "Hands-on R training: REGACC Workflows V"
+format: 
+  revealjs:
+    theme: ["custom.css"]
+    footer: "Luis Biedma | Internal training"
+    embed-resources: true
+    slide-number: c/t
+    incremental: true
+    highlight-style: github
+execute:
+  cache: false
+  message: false
+  warning: false
+  echo: true
+---
+
+## Overview
+
+The usual workflow consist, with some variations:
+
+-   ~~Find the files with the data~~
+
+-   ~~Load the data into R and tidy it~~
+
+-   ~~Do some calculations / charts~~
+
+-   Produce an [output]{style="color: red"} (normally a file)
+
+## Common types
+
+- csv files for later processing and storage
+
+- excel files
+
+- html reports with `{rmarkdown}`
+
+## csv files{.smaller}
+
+csv are a convenient storage, it is read and written fast with standard software
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+library(tidyverse)
+tmp<- readxl::read_xlsx(path = "data/df_publication_2023.xlsx",
+                        sheet = "data") %>% 
+  pivot_longer(cols= where (is.numeric),
+               names_to = "time_period",
+               values_to = "obs_value") %>% 
+  mutate(time_period = as.integer(time_period),
+         NUTS = as.factor(NUTS),
+         obs_value = as.numeric(obs_value))
+
+```
+:::
+
+::: {.fragment .fade-in}
+Normally we attach a time stamp
+:::
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+data.table::fwrite(tmp,paste0("data/", format(Sys.time(),"%Y-%m-%d"),"_GDP.csv"))
+```
+:::
+
+## multiple csv files{.smaller}
+
+In some cases it might be helpful to store the data in individual files. We can create a nested dataframe and use some functional programming.
+
+::: {.fragment .fade-in}
+```{r}
+#| eval: false
+tmp_n <- tmp %>% group_by(Country) %>% nest() 
+walk2(tmp_n$data, 
+      tmp_n$Country, 
+      ~ data.table::fwrite(.x, 
+                           file = paste0("data/",.y, ".csv")))
+```
+:::
+
+## basic excel file{.smaller}
+
+Some times we just want to get fast a quick output to filter or see something. We could store this function as an R snippet
+
+```{r}
+#| code-line-numbers: false
+show_in_excel <- function(.data){
+  tmp <- paste0(tempfile(), ".xlsx")
+  openxlsx::write.xlsx(.data,tmp, asTable = TRUE)
+  browseURL(tmp)
+}
+```
+
+## Taylored excel file{.smaller}
+
+We could use a template or define exactly were and in which format to show the data (or charts). There are many customatisations possible with `{openxlsx}`. If I want to show a table and a chart in a worksheet named summary. I would first create a table and a chart:
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp1<-tmp %>% 
+  filter(vintage %in% c("V2023") & time_period >=2019 & Country =="EL" & unit %in% c("PPS_HAB_EU27")) %>% 
+  pivot_wider(names_from = time_period,
+              values_from =obs_value) %>% 
+  select(geo,NUTS,`2019`, `2020`, `2021`)
+
+p<- tmp1 %>% 
+  select(geo,NUTS,`2021`) %>% 
+  ggplot(aes(x= `2021`, y=reorder(geo,`2021`), fill = NUTS))+
+  geom_col()+
+  theme_minimal()+
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "none")+
+  scale_fill_manual(values = c("#0E47CB","#FFCC00"))+
+  xlab("")+ ylab("")+
+  ggtitle("GDP per capita as % of EU in PPS")
+
+```
+:::
+
+## Taylored excel file{.smaller}
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+#| eval: false
+library(openxlsx)
+wb <- createWorkbook()
+modifyBaseFont(wb,fontSize = 12, fontName = "Calibri Light")
+addWorksheet(wb,"Summary")
+writeDataTable(wb, sheet = "Summary",tmp1, startCol = 1, startRow = 3, withFilter = FALSE)
+print(p)  #### important
+wb %>% insertPlot(sheet="Summary", startCol = 5, startRow = 3,width = 9, height = 6,dpi=300)
+saveWorkbook(wb,"example.xlsx", overwrite = TRUE)
+```
+:::
+
+## Writing multisheet excel files{.smaller}
+
+We can easily create country worksheets by nesting the dataframe.
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp_list<- tmp %>% 
+  arrange(time_period,Country,geo,unit,vintage) %>% 
+  pivot_wider(names_from=time_period,
+              values_from=obs_value) %>% 
+ split(.$Country)
+openxlsx::write.xlsx(tmp_list, file="example_multi.xlsx", overwrite = TRUE)
+```
+:::
+
+## rmarkdown{.smaller}
+
+rmarkdown allows creating **reproducible** documents in various formats and using different languages. We will mainly focus on html files using R. It consist in a **YAML** section, **plain text** , **code chunks** and **in-line code**.
+
+## rmarkdown{.smaller}
+
+::: {.fragment .fade-in}
+The YAML sets some options for the file to be produced. The YAML is very sensible to spaces!
+
+````{verbatim}
+---
+title: "Outliers"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    theme: readable
+    highlight: monochrome
+    code_download: yes
+editor_options: 
+  chunk_output_type: console
+params:
+  country: ES
+  z_score: 4
+---
+
+````
+:::
+
+## rmarkdown{.smaller}
+
+We write text in plain text. There are many options. Some common ones.
+
+::: {.fragment .fade-in}
+
+````{verbatim}
+### Header 3
+#### Header 4
+````
+:::
+::: {.fragment .fade-in}
+### Header 3
+#### Header 4
+:::
+
+::: {.fragment .fade-in}
+````{verbatim}
+*Italic*, **Bold**, ~~strikethrough~~, superscript^2^/subscript~2~
+````
+:::
+
+::: {.fragment .fade-in}
+*Italic*, **Bold**, ~~strikethrough~~, superscript^2^/subscript~2~
+:::
+## rmarkdown{.smaller}
+
+We can combine text with in-line code.
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+first <- tmp %>% filter(time_period==2021 & NUTS == 2 & unit=="EUR_HAB") %>% arrange(desc(obs_value)) %>% .[1,3] %>% pull()
+second <- tmp %>% filter(time_period==2021 & NUTS == 2 & unit=="EUR_HAB") %>% arrange(desc(obs_value)) %>% .[2,3] %>% pull()
+```
+:::
+
+::: {.fragment .fade-in}
+
+````{verbatim, lang = "markdown"}
+The highest GDP per capita in 2023 measured in euros was registered in `r first` followed by
+`r second`.
+```` 
+
+The highest GDP per capita in 2023 measured in euros was registered in `r first` followed by
+`r second`.
+:::
+
+## rmarkdown{.smaller}
+
+Code chunks is where we will insert the code that produces tables, charts, etc. There is a code chunk (setup) that defines some global parameters.
+
+::: {.fragment .fade-in}
+
+````{verbatim}
+```{r setup, include = FALSE}
+## Global options
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	cache = FALSE,
+	fig.height=9, 
+	fig.width=12
+)
+```
+```` 
+:::
+
+## tables{.smaller}
+
+::: {.fragment .fade-in}
+
+We can create basic tables with `knitr::kable()`.
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+table<- tmp %>% filter(time_period==2021 & NUTS == 2 & unit=="EUR_HAB") %>% arrange(desc(obs_value)) %>% 
+select(geo,obs_value) %>% 
+head(5)
+
+knitr::kable(table,format="pipe", format.args = list(big.mark = " "),
+caption="Top 5 Regions in GDP per capita")
+```
+:::
+
+
+
+## tables{.smaller}
+
+In many cases it is better to create dynamic tables with `{DT}`. 
+
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+#| eval: false
+table<- tmp %>% filter(time_period==2021 & NUTS == 2 & unit=="PPS_HAB_EU27") %>%
+filter(obs_value< 75) %>% 
+arrange(desc(obs_value)) %>% 
+select(geo,obs_value) 
+
+ 
+ DT::datatable(table,
+    caption = "EU Less Developed Regions 2023",
+    filter = "top",
+    class = "stripe hover",
+    extensions = "Buttons",
+    options = list(
+      lengthMenu = list(c(20, -1), c("20", "All")),
+      pageLength = 20,
+      dom = "Blfrtip",
+      buttons = c("excel", "csv","pdf")
+    )
+  )
+
+```
+
+:::
+
+## tables{.smaller}
+
+```{r}
+#| echo: false
+table<- tmp %>% filter(time_period==2021 & NUTS == 2 & unit=="PPS_HAB_EU27") %>%
+filter(obs_value< 75) %>% 
+arrange(desc(obs_value)) %>% 
+select(geo,obs_value) 
+
+ 
+ DT::datatable(table,
+    caption = "EU Less Developed Regions 2023",
+    filter = "top",
+    class = "stripe hover",
+    extensions = "Buttons",
+    options = list(
+      lengthMenu = list(c(20, -1), c("20", "All")),
+      pageLength = 20,
+      dom = "Blfrtip",
+      buttons = c("excel", "csv","pdf")
+    )
+  )
+
+```
+
+## parametrised reports{.smaller}
+
+We show when looking at the **YAML** that there some parameters. We can pass externally some parameters and the report will be produced for such parameters. If we create and rmarkdown with the info we showed for Greece, we could create a country parameter and create the report for the country we indicate.
+
+## parametrised reports{.smaller}
+
+````{verbatim}
+---
+title: "example"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    theme: readable
+    code_download: yes
+params:
+  country: DE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE)
+```
+
+```{r country, include=FALSE}
+country_sel <- params$country
+```
+
+```{r}
+library(tidyverse)
+tmp<- data.table::fread("data/tmp.csv")%>% 
+  mutate(NUTS=as.factor(NUTS))
+
+tmp1<-tmp %>% 
+  filter(vintage %in% c("V2023") & time_period >=2019 & Country == country_sel & unit %in% c("PPS_HAB_EU27")) %>% 
+  pivot_wider(names_from = time_period,
+              values_from =obs_value) %>% 
+  select(geo,NUTS,`2019`, `2020`, `2021`)
+
+knitr::kable(tmp1)
+
+tmp1 %>% 
+  select(geo,NUTS,`2021`) %>% 
+  ggplot(aes(x= `2021`, y=reorder(geo,`2021`), fill = NUTS))+
+  geom_col()+
+  theme_minimal()+
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "none")+
+  scale_fill_manual(values = c("#0E47CB","#FFCC00"))+
+  xlab("")+ ylab("")+
+  ggtitle("GDP per capita as % of EU in PPS")
+```
+````
+## parametrised reports{.smaller}
+
+We can knit an Rmd file with some parameters with `rmarkdown::render()`.
+
+::: {.fragment .fade-in}
+```{r}
+#| eval: false
+rmarkdown::render("example.Rmd",
+                  params = list(report = country_sel),
+                  output_file = paste0(country_sel,"_",format(Sys.time(),"%Y-%m-%d"),"_report.html"))
+```
+
+:::
+
+::: {.fragment .fade-in}
+
+And we can use `map()`if we wanted to iterate.
+
+```{r}
+#| eval: false
+country_sel<- c("EL","ES")
+
+map(country_sel,~rmarkdown::render("example.Rmd",
+                  params = list(country = .x),
+                  output_file = paste0(.x,"_",format(Sys.time(),"%Y-%m-%d"),"_report.html")))
+```
+
+:::

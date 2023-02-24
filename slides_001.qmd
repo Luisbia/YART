@@ -1,0 +1,443 @@
+---
+title: "Hands-on R training: REGACC Workflows I"
+format: 
+  revealjs:
+    theme: ["custom.css"]
+    footer: "Luis Biedma | Internal training | 24/02/2023"
+    embed-resources: true
+    slide-number: c/t
+    incremental: true
+    highlight-style: github
+execute:
+  cache: false
+  message: false
+  warning: false
+  echo: true
+editor_options: 
+  chunk_output_type: console
+---
+
+## Aim
+
+
+- Get an overview of the logic of most REGACC workflows
+
+- Be able to follow and maintain the code
+
+- Some R topics generally not in textbooks
+
+- Understand the reasons for some decisions
+
+
+## Overview
+
+The usual workflow consists, with some variations:
+
+- [Find the files with the data]{style="color: red"}
+
+- Load the data into R and tidy it
+
+- Do some calculations / charts
+
+- Produce an output (normally a file)
+
+
+## Find the files
+
+- Understand `list.files()`
+
+- Some basic string manipulation
+
+- Create a basic function
+
+## list.files() arguments{.smaller}
+
+- **path**: a character vector of full path names; the default corresponds to the working directory, getwd(). 
+
+- **pattern**: 	an optional regular expression. Only file names which match the regular expression will be returned.
+
+- **full.names**: a logical value. If TRUE, the directory path is prepended to the file names to give a relative file path. If FALSE, the file names (rather than paths) are returned.
+
+- **recursive**: logical. Should the listing recurse into directories?
+
+## list.files() arguments{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+library(tidyverse)
+```
+:::
+
+::: {.fragment .fade-in}
+
+Task: Look in the *ARCHIVE* folder of *DE* for the files received
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+list.files(path = "ARCHIVE/DE") %>%
+  length()
+```
+:::
+
+::: {.fragment .fade-in}
+This is the number of folders!
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+list.files(
+  path = "ARCHIVE/DE",
+  recursive = TRUE
+) %>%
+  length()
+```
+:::
+
+::: {.fragment .fade-in}
+This is the total number of files. We want the ones ending in *.xml*
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+tmp <- list.files(
+  path = "ARCHIVE/DE",
+  recursive = TRUE,
+  pattern = "\\.xml$"
+)
+
+length(tmp)
+```
+:::
+
+## list.files() arguments{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+tmp
+```
+:::
+
+::: {.fragment .fade-in}
+
+
+If we want to do something with them (copy, load, info) we will need the full path
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+tmp<-list.files(path = "ARCHIVE/DE",
+           recursive = TRUE,
+           pattern = "\\.xml$",
+           full.names = TRUE)
+```
+:::
+
+::: {.fragment .fade-in}
+
+We want to extract just the names of the files
+
+:::
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+str_length("NAREG_T1002_A_DE_2016_0000_V0001.xml")
+```
+:::
+
+## list.files() string operations{.smaller}
+::: {.fragment .fade-in}
+
+But it is easier to do that in a table instead of in a vector
+
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+tmp <- as_tibble(tmp)
+tmp
+```
+:::
+
+## list.files() string operations{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+tmp <- tmp %>%
+  mutate(name = str_sub(value, start = -36))
+
+tmp %>% select(name)
+```
+:::
+
+## list.files() string operations{.smaller}
+::: {.fragment .fade-in}
+
+We can keep just the parts of the string we are interested in. We use `str_sub()` to keep the fields we want.
+
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+tmp <- tmp %>%
+  mutate(table = str_sub(name,7,11),
+         country = str_sub(name,15,16),
+         ref_year = str_sub(name,18,21),
+         version= str_sub(name,29,32))
+
+tmp %>% select(-value)
+
+```
+:::
+
+## list.files(){.smaller}
+
+::: {.fragment .fade-in}
+
+We clean a bit for files with no standard names (reload)
+
+:::
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+tmp <- tmp %>%
+  filter(table %in% c("T1001", "T1002", "T1200", "T1300"))
+```
+:::
+
+::: {.fragment .fade-in}
+And make the version numeric
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp <- tmp %>%
+  mutate(version = parse_number(version))
+```
+:::
+
+
+::: {.fragment .fade-in}
+We have now a clean list of all the files sent by Germany. We could get the same for any country just changing the path
+:::
+
+::: {.fragment .fade-in}
+We could filter by table and get the paths and then load the data. As the ref_period is not very informative we probably want to know the date the file was created
+:::
+
+## list.files() using paths{.smaller}
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp <- tmp %>%
+  mutate(time = file.mtime(value))
+```
+:::
+
+::: {.fragment .fade-in}
+Probably we are only interested in this production round
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+tmp <- tmp %>%
+  filter(time >= "2022-05-01")
+```
+:::
+
+::: {.fragment .fade-in}
+It seems quite complex to decide when a table was reported, while for the validated data we can assume is the last, as Germany does a lot of partial transmissions (some variables, some years, etc)
+:::
+
+::: {.fragment .fade-in}
+
+We have worked quite a lot on this and probably it would be useful. We can make a simple function with some parameters with what we have done.
+:::
+
+## list.files() developing a function{.smaller}
+
+::: {.fragment .fade-in}
+
+We have the following code
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| eval: false
+#| code-line-numbers: false
+tmp <- list.files(
+  path = "ARCHIVE/DE",
+  recursive = TRUE,
+  pattern = "\\.xml$",
+  full.names = TRUE
+) %>%
+  as_tibble() %>%
+  mutate(name = str_sub(value, start = -36)) %>%
+  mutate(table = str_sub(name,7,11),
+         country = str_sub(name,15,16),
+         ref_year = str_sub(name,18,21),
+         version= str_sub(name,29,32)) %>% 
+  filter(table %in% c("T1001", "T1002", "T1200", "T1300")) %>%
+  mutate(version = parse_number(version)) %>%
+  mutate(time = file.mtime(value))
+```
+:::
+
+::: {.fragment .fade-in}
+
+We could make the country folder *(DE)* an argument, the *tables* and maybe add a filter for the time range
+:::
+
+## list.files() developing a function{.smaller}
+
+::: {.fragment .fade-in}
+
+Let's start with the country argument (we make it rather general and put the path in case we are not looking at the ARCHIVE folder )
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| eval: false
+#| code-line-numbers: false
+list_xml <- function(folder_sel) {
+  tmp <- list.files(
+    path = folder_sel,
+    recursive = TRUE,
+    pattern = "\\.xml$",
+    full.names = TRUE
+  ) %>%
+    as_tibble() %>%
+    mutate(name = str_sub(value, start = -36)) %>%
+  mutate(table = str_sub(name,7,11),
+         country = str_sub(name,15,16),
+         ref_year = str_sub(name,18,21),
+         version= str_sub(name,29,32)) %>% 
+    filter(table %in% c("T1001", "T1002", "T1200", "T1300")) %>%
+    mutate(version = parse_number(version)) %>%
+    mutate(time = file.mtime(value))
+
+  return(tmp)
+}
+```
+:::
+
+## list.files() developing a function{.smaller}
+
+::: {.fragment .fade-in}
+
+Now we add the other arguments
+:::
+::: {.fragment .fade-in}
+```{r}
+#| eval: false
+#| code-line-numbers: false
+list_xml <- function(folder_sel, table_sel, time_min, time_max) {
+  tmp <- list.files(
+    path = folder_sel,
+    recursive = TRUE,
+    pattern = "\\.xml$",
+    full.names = TRUE
+  ) %>%
+    as_tibble() %>%
+    mutate(name = str_sub(value, start = -36)) %>%
+  mutate(table = str_sub(name,7,11),
+         country = str_sub(name,15,16),
+         ref_year = str_sub(name,18,21),
+         version= str_sub(name,29,32)) %>% 
+    filter(table %in% table_sel) %>%
+    mutate(version = parse_number(version)) %>%
+    mutate(time = file.mtime(value)) %>%
+    filter(time >= time_min & time <= time_max)
+
+  return(tmp)
+}
+```
+:::
+## list.files() developing a function{.smaller}
+
+::: {.fragment .fade-in}
+
+It makes sense to provide some sensible results and write a bit of documentation so the user is aware of how to input the parameters. For us probably it is to overdo it to check the sanity of the parameters inside the function.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+list_xml <- function(folder_sel,
+                     table_sel = c("T1001", "T1002", "T1200", "T1300"),
+                     time_min = "2022-01-01",
+                     time_max = "2024-12-01") {
+  tmp <- list.files(
+    path = folder_sel,
+    recursive = TRUE,
+    pattern = "\\.xml$",
+    full.names = TRUE
+  ) %>%
+    as_tibble() %>%
+    mutate(name = str_sub(value, start = -36)) %>%
+  mutate(table = str_sub(name,7,11),
+         country = str_sub(name,15,16),
+         ref_year = str_sub(name,18,21),
+         version= str_sub(name,29,32)) %>% 
+    filter(table %in% table_sel) %>%
+    mutate(version = parse_number(version)) %>%
+    mutate(time = file.mtime(value)) %>%
+    filter(time >= time_min & time <= time_max)
+
+  return(tmp)
+}
+
+```
+:::
+
+## list.files() developing a function{.smaller}
+
+::: {.fragment .fade-in}
+
+```{r}
+#| code-line-numbers: false
+list_xml(folder_sel = "ARCHIVE/DE", table_sel = "T1001")
+```
+:::
+
+## list.files() developing a function{.smaller}
+
+::: {.fragment .fade-in}
+
+The function could work for all countries if we provide the general path of the **ARCHIVE** but it will be too slow probably. We could use `map()` to iterate if we wanted to run it for several countries.
+:::
+
+::: {.fragment .fade-in}
+```{r}
+#| code-line-numbers: false
+several_folders <- c("ARCHIVE/DE", "ARCHIVE/LU")
+test <- map(several_folders, list_xml) %>%
+  list_rbind() %>% 
+  arrange(table)
+test
+```
+:::
